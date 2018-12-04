@@ -1,0 +1,4 @@
+apb_efuse_if:
+  files: [
+    rtl/apb_efuse_if.sv,
+  ]
