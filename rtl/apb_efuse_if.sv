@@ -8,9 +8,8 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-`define REG_CMD        8'b00000000 //BASEADDR+0x00 
-`define REG_CFG        8'b00000001 //BASEADDR+0x04
-`define REG_CFG2       8'b00000010 //BASEADDR+0x08        
+`define REG_CMD        8'b00000000 //BASEADDR+0x00 --> 3 bit { IDLE, WRITE, READ }
+`define REG_CFG        8'b00000001 //BASEADDR+0x04 --> 32bit { R_MARGIN, LONG_CNT, MID_CNT,SHORT_CNT }
 
 module apb_efuse_if
 #(
@@ -42,9 +41,9 @@ module apb_efuse_if
    logic [31:0]     s_efuse_rdata;
    logic [1:0]      s_efuse_r_margin;
 
-   logic      [9:0] r_cnt_target_short;
-   logic      [9:0] r_cnt_target_medium;
-   logic      [9:0] r_cnt_target_long;
+   logic      [5:0]  r_cnt_target_short;
+   logic      [9:0]  r_cnt_target_medium;
+   logic      [13:0] r_cnt_target_long;
 
    enum logic [4:0] { S_IDLE, S_GO_READ_MODE, S_GO_PROG_MODE, S_READ_MODE, S_READ_ADD, S_READ_STROBE, S_READ_SAMPLE, S_PROG_MODE, S_PROG_ADD, S_PROG_STROBE, S_PROG_HOLD  } CS, NS;
    enum logic [1:0] { S_CNT_IDLE, S_CNT_RUNNING} r_cnt_state_CS, s_cnt_state_NS;
@@ -52,12 +51,11 @@ module apb_efuse_if
    logic            s_cnt_done;
    logic            s_cnt_start;
    logic            s_cnt_update;
-   logic            s_cnt_clr;
-   logic      [9:0] s_cnt_target; 
-   logic      [9:0] r_cnt_target; 
-   logic      [9:0] r_cnt; 
-   logic      [9:0] s_cnt_next; 
-   logic      [1:0] r_dest;
+
+   logic      [13:0] s_cnt_target; 
+   logic      [13:0] r_cnt_target; 
+   logic      [13:0] r_cnt; 
+   logic      [13:0] s_cnt_next; 
 
    logic [7:0] s_apb_addr;
 
@@ -115,7 +113,7 @@ module apb_efuse_if
          begin
             s_cnt_update = 1'b1;
 
-            if (r_cnt_target == r_cnt)
+            if (r_cnt == r_cnt_target-1 )
             begin
                s_cnt_next =  'h0;
                s_cnt_done = 1'b1;
@@ -162,7 +160,7 @@ module apb_efuse_if
      
      s_efuse_read            = 1'b1;
      s_cnt_start             = 1'b0;
-     s_cnt_target            = 10'h0;
+     s_cnt_target            =   '0;
      NS                      = CS;
      PREADY                  = 1'b0;
 
@@ -177,13 +175,13 @@ module apb_efuse_if
          begin
            NS           = S_GO_READ_MODE;
            s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_short;
+           s_cnt_target = {8'b0000_0000,r_cnt_target_short};
          end
          else  if (s_cmd_start_write) 
                begin
                  NS           = S_GO_PROG_MODE;
                  s_cnt_start  = 1'b1;
-                 s_cnt_target = r_cnt_target_medium;
+                 s_cnt_target = {4'b0000,r_cnt_target_medium};
                end
                else  if (s_cmd_cfg)
                      begin
@@ -195,7 +193,7 @@ module apb_efuse_if
        S_GO_READ_MODE:
        begin
          s_efuse_cs_n       = 1'b0;
-         s_efuse_load       = 1'b1;
+         s_efuse_load       = 1'b0;
          s_efuse_prog_en_n  = 1'b1;
 
          if (s_cnt_done)
@@ -203,7 +201,7 @@ module apb_efuse_if
            PREADY       = 1'b1;
            NS           = S_READ_MODE;
            s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_short;
+           s_cnt_target = {8'b0000_0000,r_cnt_target_short};
          end
        end
 
@@ -219,7 +217,7 @@ module apb_efuse_if
            NS   = S_PROG_MODE;
            PREADY       = 1'b1;
            s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_short;
+           s_cnt_target = {8'b0000_0000,r_cnt_target_short};
          end
        end
 
@@ -228,14 +226,14 @@ module apb_efuse_if
        S_READ_MODE:
        begin
          s_efuse_cs_n       = 1'b0;
-         s_efuse_load       = 1'b1;
+         s_efuse_load       = 1'b0;
          s_efuse_prog_en_n  = 1'b1;
 
          if (s_cmd_rw)
          begin
            NS   = S_READ_ADD;
-           s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_short;
+           s_cnt_start   = 1'b1;
+           s_cnt_target  = {8'b0000_0000,r_cnt_target_short};
          end
          else  if (s_cmd_idle)
                begin
@@ -257,7 +255,7 @@ module apb_efuse_if
          begin
            NS   = S_PROG_ADD;
            s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_short;
+           s_cnt_target = {8'b0000_0000,r_cnt_target_short};
          end
          else  if (s_cmd_idle)
                begin
@@ -297,7 +295,7 @@ module apb_efuse_if
          begin
            NS   = S_PROG_HOLD;
            s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_medium;
+           s_cnt_target = {4'b0000,r_cnt_target_medium};
          end
        end
 
@@ -314,7 +312,7 @@ module apb_efuse_if
          begin
            NS   = S_PROG_MODE;
            s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_medium;
+           s_cnt_target = {8'b0000_0000,r_cnt_target_short};
            PREADY       = 1'b1;
          end
 
@@ -333,7 +331,7 @@ module apb_efuse_if
          begin
            NS   = S_READ_STROBE;
            s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_short;
+           s_cnt_target = {8'b0000_0000,r_cnt_target_short};
          end
        end
 
@@ -346,7 +344,7 @@ module apb_efuse_if
          begin
            NS   = S_READ_SAMPLE;
            s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_short;
+           s_cnt_target = {8'b0000_0000,r_cnt_target_short};
          end
        end
 
@@ -362,7 +360,7 @@ module apb_efuse_if
          begin
            NS   = S_READ_MODE;
            s_cnt_start  = 1'b1;
-           s_cnt_target = r_cnt_target_short;
+           s_cnt_target = {8'b0000_0000,r_cnt_target_short};
            PREADY       = 1'b1;
          end
        end
@@ -438,11 +436,10 @@ module apb_efuse_if
    begin
          if(~PRESETN) 
          begin
-               r_cnt_target_short  <= 10'd5;
+               r_cnt_target_short  <= 6'd2;
                r_cnt_target_medium <= 10'd50; 
-               r_cnt_target_long   <= 10'd500; 
+               r_cnt_target_long   <= 14'd500; 
                r_margin            <= 2'b00;
-               r_dest              <= 2'b00;
          end
          else
          begin
@@ -451,17 +448,12 @@ module apb_efuse_if
                     case (s_apb_addr)
                     `REG_CFG:
                     begin
-                      r_cnt_target_short  <= PWDATA[ 9: 0];
-                      r_cnt_target_medium <= PWDATA[19:10]; 
-                      r_cnt_target_long   <= PWDATA[29:20];
+                      r_cnt_target_short  <= PWDATA[ 5: 0];
+                      r_cnt_target_medium <= PWDATA[15: 6]; 
+                      r_cnt_target_long   <= PWDATA[29:16];
                       r_margin            <= PWDATA[31:30];
                     end
                     
-                    `REG_CFG2:
-                    begin
-                      r_dest <= PWDATA[1:0];
-                    end
-
                     endcase // s_apb_addr
 
               end
@@ -476,9 +468,7 @@ module apb_efuse_if
          `REG_CMD:
             PRDATA = '0;
          `REG_CFG:
-            PRDATA = {2'h0,r_cnt_target_long,r_cnt_target_medium,r_cnt_target_short};
-          `REG_CFG2:
-            PRDATA = {30'h0000_0000,r_dest};
+            PRDATA = {r_margin,r_cnt_target_long,r_cnt_target_medium,r_cnt_target_short};
          default:
             PRDATA = s_efuse_rdata;
       endcase // s_apb_addr
@@ -503,7 +493,6 @@ module apb_efuse_if
    (
       .clk_i         ( PCLK              ),
       .rst_n_i       ( PRESETN           ),
-      .dest_i        ( r_dest            ),
       .test_mode_i   ( test_mode_i       ),
 
       .prog_en_n_i   ( s_efuse_prog_en_n ),
