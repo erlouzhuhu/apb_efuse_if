@@ -2,16 +2,3 @@ apb_efuse_if:
   files: [
     rtl/apb_efuse_if.sv,
   ]
-  jg_slint_top_name: [
-    apb_efuse_if
-  ]
-  jg_slint_elab_opt: [    
-  ]
-  jg_slint_postelab_cmds: [
-  ]
-  jg_slint_clocks: [
-    PCLK,
-  ]
-  jg_slint_resets: [
-    ~PRESETN,
-  ]
